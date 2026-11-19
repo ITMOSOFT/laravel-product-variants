@@ -5,16 +5,17 @@ namespace ItmoSoft\ProductVariants;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use ItmoSoft\ProductVariants\Contracts\ProductVariantContract;
 use ItmoSoft\ProductVariants\Models\ProductVariant;
 
 class ProductVariantsManager
 {
-    public function create(Model $product, array $attributes): ProductVariant
+    public function create(Model $product, array $attributes): ProductVariantContract
     {
-        $this->validateSku($attributes['sku'] ?? null);
+        $model = $this->variantModelForProduct($product);
+        $this->validateSku($attributes['sku'] ?? null, null, $model);
 
-        return DB::transaction(function () use ($product, $attributes): ProductVariant {
-            $model = config('product-variants.models.variant', ProductVariant::class);
+        return DB::transaction(function () use ($product, $attributes, $model): ProductVariantContract {
             $variant = new $model();
             $variant->fill($this->allowedAttributes($attributes));
 
@@ -28,13 +29,13 @@ class ProductVariantsManager
         });
     }
 
-    public function update(ProductVariant $variant, array $attributes): ProductVariant
+    public function update(ProductVariantContract $variant, array $attributes): ProductVariantContract
     {
         if (array_key_exists('sku', $attributes)) {
-            $this->validateSku($attributes['sku'], $variant->getKey());
+            $this->validateSku($attributes['sku'], $variant->getKey(), $variant::class);
         }
 
-        return DB::transaction(function () use ($variant, $attributes): ProductVariant {
+        return DB::transaction(function () use ($variant, $attributes): ProductVariantContract {
             if ((bool) ($attributes['is_default'] ?? false)) {
                 $variant->product()->firstOrFail()
                     ->variants()
@@ -49,9 +50,9 @@ class ProductVariantsManager
         });
     }
 
-    public function setDefault(ProductVariant $variant): ProductVariant
+    public function setDefault(ProductVariantContract $variant): ProductVariantContract
     {
-        return DB::transaction(function () use ($variant): ProductVariant {
+        return DB::transaction(function () use ($variant): ProductVariantContract {
             $product = $variant->product()->lockForUpdate()->firstOrFail();
 
             $product->variants()
@@ -64,26 +65,26 @@ class ProductVariantsManager
         });
     }
 
-    public function activate(ProductVariant $variant): ProductVariant
+    public function activate(ProductVariantContract $variant): ProductVariantContract
     {
         $variant->forceFill(['is_active' => true])->save();
 
         return $variant->refresh();
     }
 
-    public function deactivate(ProductVariant $variant): ProductVariant
+    public function deactivate(ProductVariantContract $variant): ProductVariantContract
     {
         $variant->forceFill(['is_active' => false])->save();
 
         return $variant->refresh();
     }
 
-    public function delete(ProductVariant $variant): void
+    public function delete(ProductVariantContract $variant): void
     {
         $variant->delete();
     }
 
-    private function validateSku(mixed $sku, mixed $ignoreId = null): void
+    private function validateSku(mixed $sku, mixed $ignoreId = null, ?string $modelClass = null): void
     {
         $required = (bool) config('product-variants.sku.required', false);
 
@@ -104,8 +105,8 @@ class ProductVariantsManager
             }
 
             if ($sku !== '' && ! (bool) config('product-variants.allow_duplicate_skus', false)) {
-                $model = config('product-variants.models.variant', ProductVariant::class);
-                $query = $model::query()->where('sku', $sku);
+                $modelClass ??= config('product-variants.models.variant', ProductVariant::class);
+                $query = $modelClass::query()->where('sku', $sku);
 
                 if ($ignoreId !== null) {
                     $query->whereKeyNot($ignoreId);
@@ -116,6 +117,19 @@ class ProductVariantsManager
                 }
             }
         }
+    }
+
+
+    /** Resolve an optional model override for this product class. */
+    private function variantModelForProduct(Model $product): string
+    {
+        foreach (config('product-variants.models.by_product', []) as $productClass => $variantClass) {
+            if (is_string($productClass) && is_a($product, $productClass)) {
+                return $variantClass;
+            }
+        }
+
+        return config('product-variants.models.variant', ProductVariant::class);
     }
 
     private function allowedAttributes(array $attributes): array

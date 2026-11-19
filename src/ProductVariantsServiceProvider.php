@@ -19,6 +19,8 @@ class ProductVariantsServiceProvider extends ServiceProvider
             __DIR__.'/../config/product-variants.php' => config_path('product-variants.php'),
         ], 'product-variants-config');
 
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        if ((bool) config('product-variants.migrations.enabled', true)) {
+            $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        }
     }
 }

@@ -4,8 +4,9 @@ namespace ItmoSoft\ProductVariants\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use ItmoSoft\ProductVariants\Contracts\ProductVariantContract;
 
-class ProductVariant extends Model
+class ProductVariant extends Model implements ProductVariantContract
 {
     protected $guarded = [];
 
